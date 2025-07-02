@@ -4,14 +4,18 @@
   "main": "main.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "electron ."
+    "start": "electron .",
+    "build-msix": "electron-builder --win appx"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "",
+  "description": "A Hugo blog management application built with Electron",
   "dependencies": {
-    "electron": "^36.0.1",
     "gray-matter": "^4.0.3"
+  },
+  "devDependencies": {
+    "electron": "^36.0.1",
+    "electron-builder": "^24.13.3"
   }
 }
