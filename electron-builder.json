@@ -26,7 +26,7 @@
         "arch": ["x64"]
       }
     ],
-    "publisherName": "CN=Hugo Manager Developer",
+    "publisherName": "CN=Ingredient",
     "icon": "build/icon.ico"
   },
   "appx": {
@@ -34,8 +34,8 @@
     "backgroundColor": "transparent",
     "showNameOnTiles": false,
     "identityName": "HugoManagerApp.HugoManager",
-    "publisher": "CN=Hugo Manager Developer",
-    "publisherDisplayName": "Hugo Manager Developer",
+    "publisher": "CN=Ingredient",
+    "publisherDisplayName": "Ingredient",
     "languages": ["en-US", "zh-CN"]
   }
 }
