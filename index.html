@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <title>Hugo 管理器</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+</head>
+<body class="bg-gray-100 p-4">
+  <div class="max-w-screen-xl mx-auto">
+    <div class="bg-white shadow-md rounded-xl p-4 mb-4">
+      <h1 class="text-2xl font-bold mb-4">Hugo 标签管理</h1>
+      <div class="flex flex-col md:flex-row gap-4 mb-2 items-end">
+        <div class="flex-grow">
+          <label class="block text-sm font-medium text-gray-700 mb-1">Hugo 仓库路径</label>
+          <div class="flex gap-2 items-end">
+            <input id="repo-path" type="text" class="flex-grow p-2 border rounded-lg" 
+                  placeholder="选择或输入Hugo内容目录路径，例如: C:\Users\username\blog\content\post" />
+            <button id="browse-btn" class="bg-gray-500 text-white px-4 py-2 rounded-lg">浏览...</button>
+          </div>
+          <!-- <div class="text-sm text-gray-500 mt-1">例如: C:\Users\username\blog\content\post</div> -->
+        </div>
+        <div class="flex items-end gap-2">
+          <button id="load-btn" class="bg-blue-500 text-white px-4 py-2 rounded-lg">加载文章</button>
+          <button id="save-btn" class="bg-green-500 text-white px-4 py-2 rounded-lg">保存更改</button>
+        </div>
+      </div>
+    </div>
+    
+    <div class="flex justify-between items-center mb-4">
+      <div class="text-lg font-medium" id="status-text">未加载文章</div>
+      <div class="flex gap-2">
+        <button id="mode-article" class="bg-blue-500 text-white px-3 py-1 rounded-lg">按文章</button>
+        <button id="mode-tag" class="bg-gray-300 px-3 py-1 rounded-lg">按标签</button>
+      </div>
+    </div>
+
+    <div id="card-container" class="columns-1 sm:columns-2 lg:columns-3 gap-4 space-y-4">
+      <!-- 卡片将动态插入 -->
+    </div>
+  </div>
+
+  <!-- 在 <body> 内，添加通知容器 -->
+  <div id="notification-container" class="fixed top-4 right-4 space-y-2 z-50"></div>
+
+  <!-- 添加自定义对话框 -->
+  <div id="modal-overlay" class="fixed inset-0 bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50 hidden">
+    <div id="confirm-dialog" class="bg-white rounded-lg shadow-lg p-6 max-w-sm w-full mx-4">
+      <h3 id="dialog-title" class="text-lg font-semibold mb-3">确认操作</h3>
+      <p id="dialog-message" class="mb-4">确认要执行此操作吗？</p>
+      <div class="flex justify-end gap-2">
+        <button id="dialog-cancel" class="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300">取消</button>
+        <button id="dialog-confirm" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">确认</button>
+      </div>
+    </div>
+  </div>
+  
+  <div id="notification-container" class="fixed top-4 right-4 space-y-2 z-50"></div>
+
+  <script src="renderer.js"></script>
+  <script>
+    // 自定义非阻塞确认对话框
+    function showConfirmDialog(message, confirmCallback, cancelCallback = null) {
+      const overlay = document.getElementById('modal-overlay');
+      const dialogMessage = document.getElementById('dialog-message');
+      const confirmBtn = document.getElementById('dialog-confirm');
+      const cancelBtn = document.getElementById('dialog-cancel');
+      
+      // 设置消息内容
+      dialogMessage.textContent = message;
+      
+      // 清理旧事件监听器
+      const newConfirmBtn = confirmBtn.cloneNode(true);
+      const newCancelBtn = cancelBtn.cloneNode(true);
+      confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+      cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+      
+      // 添加新的事件监听器
+      newConfirmBtn.addEventListener('click', () => {
+        overlay.classList.add('hidden');
+        if (confirmCallback) confirmCallback();
+      });
+      
+      newCancelBtn.addEventListener('click', () => {
+        overlay.classList.add('hidden');
+        if (cancelCallback) cancelCallback();
+      });
+      
+      // 显示对话框
+      overlay.classList.remove('hidden');
+    }
+    
+    // 通知提示，不阻塞UI
+    function showNotification(message, type = 'info') {
+      const container = document.getElementById('notification-container');
+      const notif = document.createElement('div');
+      notif.textContent = message;
+      notif.className = `px-4 py-2 rounded shadow ${
+        type === 'success' ? 'bg-green-500 text-white' : type === 'error' ? 'bg-red-500 text-white' : 'bg-blue-500 text-white'
+      }`;
+      container.appendChild(notif);
+      setTimeout(() => {
+        notif.classList.add('opacity-0');
+        setTimeout(() => container.removeChild(notif), 300);
+      }, 3000);
+    }
+
+    // 全局文章数据
+    let articles = [];
+    let viewMode = 'article'; // or 'tag'
+    const container = document.getElementById('card-container');
+    
+    // 页面加载时，恢复上次保存的仓库路径
+    document.addEventListener('DOMContentLoaded', () => {
+      const savedPath = window.hugoManager.getRepoPath();
+      if (savedPath) {
+        document.getElementById('repo-path').value = savedPath;
+      }
+    });
+
+    // 绑定浏览按钮事件
+    document.getElementById('browse-btn').addEventListener('click', async () => {
+      await window.hugoManager.browseRepoPath();
+    });
+
+    // 绑定加载按钮事件
+    document.getElementById('load-btn').addEventListener('click', async () => {
+      const loadedArticles = await window.hugoManager.loadArticlesFromRepo();
+      if (loadedArticles) {
+        articles = loadedArticles;
+        document.getElementById('status-text').textContent = `已加载 ${articles.length} 篇文章`;
+        render();
+      }
+    });
+
+    // 绑定保存按钮事件，非阻塞提示
+    document.getElementById('save-btn').addEventListener('click', async () => {
+      if (articles.length === 0) {
+        showNotification('没有文章可以保存', 'error');
+        return;
+      }
+      
+      const success = await window.hugoManager.saveArticlesToRepo(articles);
+      if (success) {
+        showNotification('文章标签保存成功！', 'success');
+      }
+    });
+
+    function render() {
+      container.innerHTML = '';
+      if (viewMode === 'article') {
+        articles.forEach((a, index) => {
+          const el = document.createElement('div');
+          el.className = 'break-inside-avoid bg-white shadow rounded-xl p-4';
+          el.innerHTML = `
+            <h2 class="text-lg font-semibold">${a.title}</h2>
+            <div class="flex flex-wrap gap-2 mt-2">
+              ${a.tags.map(t => `<span draggable="true" data-article="${index}" class="drag-tag bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm">${t}</span>`).join('')}
+            </div>
+            <div class="mt-2 flex">
+              <input type="text" class="new-tag-input p-1 text-sm border rounded" placeholder="添加新标签..." />
+              <button class="add-tag-btn ml-1 bg-gray-200 px-2 rounded text-sm" data-article="${index}">添加</button>
+            </div>
+          `;
+          container.appendChild(el);
+        });
+      } else {
+        // 收集所有标签
+        const tagMap = {};
+        articles.forEach((a, i) => {
+          a.tags.forEach(t => {
+            if (!tagMap[t]) tagMap[t] = [];
+            tagMap[t].push({ articleIndex: i, title: a.title });
+          });
+        });
+
+        Object.entries(tagMap).forEach(([tag, items]) => {
+          const el = document.createElement('div');
+          el.className = 'break-inside-avoid bg-white shadow rounded-xl p-4';
+          el.innerHTML = `
+            <h2 class="text-lg font-semibold">${tag}</h2>
+            <ul class="mt-2 text-sm text-gray-600">
+              ${items.map(i => `<li>${i.title}</li>`).join('')}
+            </ul>
+          `;
+          container.appendChild(el);
+        });
+      }
+
+      addDragDropHandlers();
+      addTagInputHandlers();
+    }
+
+    function addTagInputHandlers() {
+      document.querySelectorAll('.add-tag-btn').forEach(btn => {
+        btn.addEventListener('click', e => {
+          const articleIndex = parseInt(e.target.dataset.article);
+          const input = e.target.previousElementSibling;
+          const newTag = input.value.trim();
+          
+          if (newTag && !articles[articleIndex].tags.includes(newTag)) {
+            articles[articleIndex].tags.push(newTag);
+            input.value = '';
+            render();
+          }
+        });
+      });
+
+      document.querySelectorAll('.new-tag-input').forEach(input => {
+        input.addEventListener('keydown', e => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            const btn = input.nextElementSibling;
+            btn.click();
+          }
+        });
+      });
+    }
+
+    function addDragDropHandlers() {
+      const draggables = document.querySelectorAll('.drag-tag');
+      let draggedTag = null;
+      let draggedArticle = null;
+      let dragOverTagContainer = null;
+      let dragOverIndex = null;
+      let indicator = null;
+      let dragInProgress = false;
+      let isDeletePrompted = false; // 防止多次弹窗
+
+      // 清理指示器
+      function clearIndicator() {
+        if (indicator && indicator.parentNode) {
+          indicator.parentNode.removeChild(indicator);
+        }
+        indicator = null;
+      }
+
+      function clearDragState() {
+        draggedTag = null;
+        draggedArticle = null;
+        dragOverTagContainer = null;
+        dragOverIndex = null;
+        dragInProgress = false;
+        isDeletePrompted = false;
+        clearIndicator();
+      }
+
+      draggables.forEach(el => {
+        el.addEventListener('dragstart', e => {
+          draggedTag = el.textContent;
+          draggedArticle = parseInt(el.dataset.article);
+          dragInProgress = true;
+          dragOverTagContainer = null;
+          dragOverIndex = null;
+          isDeletePrompted = false;
+          e.dataTransfer.effectAllowed = 'copyMove';
+        });
+        el.addEventListener('dragend', clearDragState);
+        el.addEventListener('dblclick', e => {
+          const articleIndex = parseInt(el.dataset.article);
+          const tag = el.textContent;
+          
+          showConfirmDialog(`是否删除标签 "${tag}"？`, () => {
+            const tagIndex = articles[articleIndex].tags.indexOf(tag);
+            if (tagIndex >= 0) {
+              articles[articleIndex].tags.splice(tagIndex, 1);
+              render();
+            }
+          });
+        });
+      });
+
+      // 标签容器内拖拽排序
+      document.querySelectorAll('.flex.flex-wrap.gap-2.mt-2').forEach((tagContainer, articleIndex) => {
+        tagContainer.addEventListener('dragover', e => {
+          if (!dragInProgress) return;
+          e.preventDefault();
+          dragOverTagContainer = tagContainer;
+          // 计算插入位置
+          let found = false;
+          let idx = 0;
+          for (const child of tagContainer.children) {
+            if (child === indicator) continue; // 跳过指示器本身
+            const rect = child.getBoundingClientRect();
+            const offset = e.clientX - rect.left;
+            if (offset < rect.width / 2) {
+              dragOverIndex = idx;
+              found = true;
+              break;
+            }
+            idx++;
+          }
+          if (!found) dragOverIndex = tagContainer.children.length;
+          // 指示器
+          // 只有位置变化时才插入，避免第一个标签跳动
+          if (!indicator || indicator.parentNode !== tagContainer || Array.from(tagContainer.children).indexOf(indicator) !== dragOverIndex) {
+            clearIndicator();
+            indicator = document.createElement('div');
+            indicator.style.display = 'inline-block';
+            indicator.style.width = '2px';
+            indicator.style.height = '20px';
+            indicator.style.background = '#3b82f6';
+            indicator.style.verticalAlign = 'middle';
+            if (dragOverIndex >= tagContainer.children.length) {
+              tagContainer.appendChild(indicator);
+            } else {
+              tagContainer.insertBefore(indicator, tagContainer.children[dragOverIndex]);
+            }
+          }
+        });
+        tagContainer.addEventListener('dragleave', e => {
+          if (!e.relatedTarget || !tagContainer.contains(e.relatedTarget)) {
+            clearIndicator();
+          }
+        });
+        tagContainer.addEventListener('drop', e => {
+          e.preventDefault();
+          clearIndicator();
+          if (draggedTag == null || draggedArticle == null) return;
+          const targetArticle = parseInt(tagContainer.querySelector('.drag-tag')?.dataset.article);
+          if (targetArticle === undefined || isNaN(targetArticle)) return;
+          if (targetArticle === draggedArticle) {
+            // 同卡片内排序逻辑
+            const tags = articles[targetArticle].tags;
+            const oldIdx = tags.indexOf(draggedTag);
+            if (oldIdx === -1) return;
+            tags.splice(oldIdx, 1);
+            let insertIdx = dragOverIndex;
+            if (insertIdx > oldIdx) insertIdx--;
+            tags.splice(insertIdx, 0, draggedTag);
+            render();
+          } else {
+            // 跨卡片移动/复制，插入到指示器位置
+            const fromTags = articles[draggedArticle].tags;
+            const toTags = articles[targetArticle].tags;
+            if (!toTags.includes(draggedTag)) {
+              let insertIdx = dragOverIndex;
+              if (insertIdx == null || insertIdx > toTags.length) insertIdx = toTags.length;
+              toTags.splice(insertIdx, 0, draggedTag);
+            }
+            if (!e.ctrlKey) {
+              const idx = fromTags.indexOf(draggedTag);
+              if (idx >= 0) fromTags.splice(idx, 1);
+            }
+            render();
+          }
+          clearDragState();
+        });
+      });
+
+      // 卡片整体支持拖拽（用于卡片间移动/复制）
+      document.querySelectorAll('.break-inside-avoid').forEach((card, idx) => {
+        card.addEventListener('dragover', e => e.preventDefault());
+        card.addEventListener('drop', e => {
+          e.preventDefault();
+          clearIndicator();
+          if (draggedTag == null || draggedArticle == null) return;
+          if (idx === draggedArticle) return; // 已在tagContainer处理
+          const toTags = articles[idx].tags;
+          if (!toTags.includes(draggedTag)) {
+            toTags.push(draggedTag);
+          }
+          if (!e.ctrlKey) {
+            const fromTags = articles[draggedArticle].tags;
+            const tagIdx = fromTags.indexOf(draggedTag);
+            if (tagIdx >= 0) fromTags.splice(tagIdx, 1);
+          }
+          render();
+          clearDragState();
+        });
+      });
+
+      // 拖到空白处删除（只在drop时弹一次）
+      container.addEventListener('dragover', e => {
+        // 只允许在空白处放置
+        const elemBelow = document.elementFromPoint(e.clientX, e.clientY);
+        if (!elemBelow?.closest('.break-inside-avoid') && !elemBelow?.closest('.drag-tag')) {
+          e.preventDefault();
+        }
+      });
+      container.addEventListener('drop', e => {
+        const elemBelow = document.elementFromPoint(e.clientX, e.clientY);
+        if (!elemBelow?.closest('.break-inside-avoid') && !elemBelow?.closest('.drag-tag')) {
+          e.preventDefault();
+          clearIndicator();
+
+          // 记录待删除标签信息
+          const tagToDelete = draggedTag;
+          const articleIdx = draggedArticle;
+
+          // 清理拖拽状态并先渲染界面
+          clearDragState();
+          render();
+
+          // 使用自定义对话框
+          if (tagToDelete != null && articleIdx != null) {
+            const tags = articles[articleIdx].tags;
+            const idx = tags.indexOf(tagToDelete);
+            if (idx >= 0) {
+              showConfirmDialog(`是否删除标签 "${tagToDelete}"？`, () => {
+                tags.splice(idx, 1);
+                render();
+              });
+            }
+          }
+        }
+      });
+    }
+
+    document.getElementById('mode-article').addEventListener('click', () => {
+      viewMode = 'article';
+      document.getElementById('mode-article').className = 'bg-blue-500 text-white px-3 py-1 rounded-lg';
+      document.getElementById('mode-tag').className = 'bg-gray-300 px-3 py-1 rounded-lg';
+      render();
+    });
+    
+    document.getElementById('mode-tag').addEventListener('click', () => {
+      viewMode = 'tag';
+      document.getElementById('mode-tag').className = 'bg-blue-500 text-white px-3 py-1 rounded-lg';
+      document.getElementById('mode-article').className = 'bg-gray-300 px-3 py-1 rounded-lg';
+      render();
+    });
+  </script>
+</body>
+</html>
