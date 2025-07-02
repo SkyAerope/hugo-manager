@@ -26,15 +26,15 @@
         "arch": ["x64"]
       }
     ],
-    "publisherName": "CN=Ingredient",
+    "publisherName": "CN=87C21E77-3A10-4BA0-B4AE-F52C52789177",
     "icon": "build/icon.ico"
   },
   "appx": {
     "applicationId": "HugoManager",
     "backgroundColor": "transparent",
     "showNameOnTiles": false,
-    "identityName": "HugoManagerApp.HugoManager",
-    "publisher": "CN=Ingredient",
+    "identityName": "Ingredient.HugoManager",
+    "publisher": "CN=87C21E77-3A10-4BA0-B4AE-F52C52789177",
     "publisherDisplayName": "Ingredient",
     "languages": ["en-US", "zh-CN"]
   }
