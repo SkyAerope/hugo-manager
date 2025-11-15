@@ -15,7 +15,7 @@
     "gray-matter": "^4.0.3"
   },
   "devDependencies": {
-    "electron": "^36.0.1",
+    "electron": "^36.8.1",
     "electron-builder": "^24.13.3"
   }
 }
